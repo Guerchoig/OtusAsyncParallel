@@ -2,7 +2,9 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <list>
 #include <mutex>
+#include <memory>
 
 // special symbols
 constexpr unsigned char end_sym = 0x04; //^D
@@ -27,13 +29,24 @@ using cmds_t = std::vector<std::string>;
 
 struct input_context_t
 {
+    std::mutex mtx;    // mutex for context
     size_t block_size; // command block size
     cmds_t inp_cmd_q;  // commands temporary buffer in which block cmds are being accumulated
-    std::mutex mtx;    // mutex for context
-    void *out_handle;  // output context
     explicit input_context_t(size_t block_size) : block_size(block_size) {}
 };
+
 using input_handle_t = input_context_t *;
+
+inline struct input_ctx_collection_t
+{
+    std::mutex mtx; // mutex for calling connect from multiple threads
+    std::list<input_context_t> ctxs;
+    bool is_empty()
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        return ctxs.empty();
+    }
+} input_ctx_collection;
 
 /// @brief Takes one command from buf;
 ///  accumulate commands in temporary ctx->cmds_buf

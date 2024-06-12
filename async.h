@@ -1,5 +1,6 @@
 // libasync.h
 #pragma once
+#include <memory>
 #include <queue>
 #include <condition_variable>
 

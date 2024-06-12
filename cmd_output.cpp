@@ -1,5 +1,4 @@
-
-// #define LOCAL_INOUT
+//cmd_output.cpp
 #include "cmd_input.h"
 #include "cmd_output.h"
 #include <iostream>
@@ -7,21 +6,20 @@
 #include <thread>
 #include <mutex>
 #include <cassert>
-
-// Push into queue the block, constructed from commands in ctx->cmds_buf;
+#include <memory>
+// Push into queue the block, constructed from commands in out_ctx.cmds_buf;
 // called from threadsafe scope
 void push_block(void *_input_ctx, const size_t cmd_buf_size)
 {
     input_handle_t input_ctx = static_cast<input_handle_t>(_input_ctx);
-    output_handle_t out_ctx = static_cast<output_handle_t>(input_ctx->out_handle);
     if (!cmd_buf_size)
         return;
     {
-        std::lock_guard<std::mutex> lock(out_ctx->mtx);
-        out_ctx->cmd_blocks_q.emplace(cmd_block_t(clock(), input_ctx->inp_cmd_q));
+        std::lock_guard<std::mutex> lock(out_ctx.mtx);
+        out_ctx.cmd_blocks_q.emplace(cmd_block_t(clock(), input_ctx->inp_cmd_q));
         input_ctx->inp_cmd_q.clear();
     }
-    out_ctx->cv.notify_all();
+    out_ctx.cv.notify_all();
 }
 
 /// @brief Writes a block of cmd's to a stream.
@@ -65,30 +63,32 @@ void output_block(const cmd_block_t &block, [[maybe_unused]] to_console_t s)
 /// Output a block in blocks queue to console
 /// @param ctx - async control handle
 template <typename OWN_FLAG_T, typename FOREIGN_FLAG_T>
-void output_tread(output_handle_t ctx)
+void output_tread()
 {
-    std::unique_lock<std::mutex> blocks_queue_lock(ctx->mtx);
-    while (!ctx->finished)
+    std::unique_lock<std::mutex> blocks_queue_lock(out_ctx.mtx);
+    
+    // While there are connected input threads
+    while (!input_ctx_collection.is_empty())
     {
-        ctx->cv.wait(blocks_queue_lock, [ctx]
-                     { return !ctx->cmd_blocks_q.empty() || ctx->finished; });
+        out_ctx.cv.wait(blocks_queue_lock, []
+                        { return !out_ctx.cmd_blocks_q.empty() || input_ctx_collection.is_empty();});
 
-        while (!ctx->cmd_blocks_q.empty())
+        while (!out_ctx.cmd_blocks_q.empty())
         {
             // Copy the front block
-            auto block = ctx->cmd_blocks_q.front();
+            auto block = out_ctx.cmd_blocks_q.front();
 
             // Check output flags
             switch (block.output_state)
             {
             case NOFLAGS:
                 // leave it in queue and output to curr channel
-                ctx->cmd_blocks_q.front().output_state |= OWN_FLAG_T::value;
+                out_ctx.cmd_blocks_q.front().output_state |= OWN_FLAG_T::value;
                 break;
             case FOREIGN_FLAG_T::value:
                 // Delete from queue: output to foreign channel is already done,
                 // output to curr channel will be done soon
-                ctx->cmd_blocks_q.pop();
+                out_ctx.cmd_blocks_q.pop();
                 break;
             case OWN_FLAG_T::value:
                 // Output to current channel is already done, nothing to do here
@@ -109,8 +109,8 @@ void output_tread(output_handle_t ctx)
             {
                 std::cerr << e.what() << std::endl;
             }
-            // lock mutex to verify ctx->finished and for ctx->cv.wait
-            // if ctx->finished == true, the mutex will unlock when leaving
+            // lock mutex to verify out_ctx.finished and for out_ctx.cv.wait
+            // if out_ctx.finished == true, the mutex will unlock when leaving
             blocks_queue_lock.lock();
         }
     }
@@ -119,17 +119,17 @@ void output_tread(output_handle_t ctx)
 // Thread enveloppe function for output to console
 // ;it's impossible to instantiate an output_tread() template with arguments
 // right in the std::thread definition
-void thread_to_console(output_handle_t ctx)
+void thread_to_console()
 {
-    output_tread<to_console_t, to_file_t>(ctx);
+    output_tread<to_console_t, to_file_t>();
 }
 
 // Thread enveloppe function for output to file
 // ;it's impossible to instantiate an output_tread() template with arguments
 // right in the std::thread definition
-void thread_to_file(output_handle_t ctx)
+void thread_to_file()
 {
-    output_tread<to_file_t, to_console_t>(ctx);
+    output_tread<to_file_t, to_console_t>();
 }
 
 void debug_print(std::string s)
