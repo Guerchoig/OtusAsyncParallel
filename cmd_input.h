@@ -2,7 +2,7 @@
 #pragma once
 #include <string>
 #include <vector>
-#include <list>
+#include <unordered_set>
 #include <mutex>
 #include <memory>
 
@@ -40,7 +40,7 @@ using input_handle_t = input_context_t *;
 inline struct input_ctx_collection_t
 {
     std::mutex mtx; // mutex for calling connect from multiple threads
-    std::list<input_context_t> ctxs;
+    std::unordered_set<input_handle_t> ctxs;
     bool is_empty()
     {
         std::lock_guard<std::mutex> lock(mtx);
