@@ -45,16 +45,15 @@ if (MSVC)
     target_compile_options(main_test 
         /W4
     )
-    # target_compile_options(async 
-    #     /W4
-    # )
+    target_compile_options(async 
+    /W4 )
 else ()
     target_compile_options(main_test PRIVATE
         -Wall -Wextra -pedantic -Werror
     )
-    # target_compile_options(async PRIVATE
-    #     -Wall -Wextra -pedantic -Werror
-    # )
+    target_compile_options(async PRIVATE
+        -Wall -Wextra -pedantic -Werror
+    )
     
 endif()
 
