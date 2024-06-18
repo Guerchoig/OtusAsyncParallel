@@ -54,7 +54,7 @@ void receive(void *_ctx, const std::string buf)
 
     if (!buf.size())
         return;
-    input_blk_handle_t inp_ctx = static_cast<const input_blk_handle_t>(_ctx);
+    input_blk_handle_t inp_ctx = static_cast<input_blk_handle_t>(_ctx);
 
     static int dynamic_depth{0};
     // _DF;
@@ -78,7 +78,7 @@ void receive(void *_ctx, const std::string buf)
             std::cerr << "Unpair close bracket" << std::endl;
             std::quick_exit(2);
         }
-        if (dynamic_depth == 0) // dynamic block is finishing
+        if (dynamic_depth == 0)               // dynamic block is finishing
             push_block_to_out_queue(inp_ctx); // Put into output q and clear it
         break;
     default:

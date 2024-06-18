@@ -71,6 +71,7 @@ void write_block_to_stream(const cmd_block_t &block, std::ostream &stream)
         ss += s;
     }
     ss += "\n";
+    stream << ss;
 }
 
 /// @brief An output_block function specialization to output into file stream
