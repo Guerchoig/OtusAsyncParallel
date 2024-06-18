@@ -20,7 +20,7 @@ set(SOURCE_EXE main_test.cpp)
 
 add_executable(main_test main_test.cpp)
 
-add_library(async SHARED async.cpp cmd_output.cpp async.cpp)
+add_library(async SHARED async.cpp cmd_output.cpp )
 # add_executable(test_main_control test_main_control.cpp)
 
 set_target_properties(main_test PROPERTIES
