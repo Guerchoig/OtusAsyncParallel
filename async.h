@@ -1,4 +1,4 @@
-// libasync.h
+// async.h
 #pragma once
 #include <memory>
 #include <queue>
@@ -13,8 +13,8 @@ void *connect(std::size_t block_size);
 /// @param ctx Context handle
 /// @param data Command text (one command)
 /// @param size Command string length
-void receive(void *ctx, const char *data, std::size_t size);
+void receive(void *_ctx, const std::string data);
 
 /// @brief Disconnect func
 /// @param ctx
-void disconnect(void *ctx);
+void disconnect(void *_ctx);
