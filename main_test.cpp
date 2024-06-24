@@ -10,22 +10,15 @@
 #include <stdlib.h>
 #include <chrono>
 
-constexpr auto log_directory = "../log";
-constexpr int block_size = 3;
-constexpr int nof_cmds = 7;
+constexpr int block_size = 3;           // nof commands in block
+constexpr int nof_cmds_per_writer = 5; // total number of cmds which one connection pushes
+constexpr int nof_writers = 100;         // nof concurrent pushing threads
 
-int main()
+void writer(const char *log_dir, int start_num)
 {
-    // Clear log directory and console
-    system("clear");
-    const std::filesystem::directory_iterator _end;
-    for (std::filesystem::directory_iterator it(log_directory); it != _end; ++it)
-        std::filesystem::remove(it->path());
+    auto handle = connect(block_size, log_dir);
 
-    auto handle = connect(block_size);
-    // std::vector<std::string> commands = {"command1", "command2", "command3", "command4", "command5", "command6", "command7"};
-
-    for (int i = 1; i <= nof_cmds; ++i)
+    for (int i = start_num; i < start_num + nof_cmds_per_writer; ++i)
     {
         std::string cm;
         cm = "command" + std::to_string(i);
@@ -33,13 +26,24 @@ int main()
         receive(handle, cm);
     }
 
-    // using namespace std::this_thread;     // sleep_for, sleep_until
-    // using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
-    // using std::chrono::system_clock;
-
-    // sleep_until(system_clock::now() + 15s);
-
     disconnect(handle);
+}
+
+int main()
+{
+    // Clear log directory and console
+    auto log_dir = "../log";
+    auto res = system("clear");
+    (void)res;
+    const std::filesystem::directory_iterator _end;
+    for (std::filesystem::directory_iterator it(log_dir); it != _end; ++it)
+        std::filesystem::remove(it->path());
+
+    // Start writers
+    for (int i = 0; i < nof_writers; i++)
+    {
+        std::jthread(writer, log_dir, i * nof_cmds_per_writer);
+    }
 
     return 0;
 }

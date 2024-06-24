@@ -1,31 +1,37 @@
-// cmd_input.h
+/**
+ * @brief async_internal.h - async library internal definitions for commands input
+ */
+
 #pragma once
+#include "async.h"
 #include <string>
 #include <vector>
-#include <unordered_set>
+#include <unordered_map>
 #include <mutex>
 #include <memory>
 #include <thread>
 
-#define DEBUG
+// #define DEBUG
 
+std::string pid_to_string(std::thread *p);
 std::string this_pid_to_string();
+
 #ifdef DEBUG
 std::string pid_to_string(std::thread *p);
-#define _DS(s) std::cout << (this_pid_to_string() + " " + s + "\n")
+#define _DS(s) std::cout << (this_pid_to_string() + " " + s + "\n");
 #define _DF _DS(__PRETTY_FUNCTION__)
-
 #else
-#define _DPN ;
-#define _DSN(s) ;
+#define _DS(s) ;
+#define _DF ;
 #endif
 
-// special symbols
-constexpr unsigned char end_sym = 0x04; //^D
+// Special symbols for input cmd stream
 constexpr unsigned char open_br_sym = '{';
 constexpr unsigned char close_br_sym = '}';
 
-/// Enum for lexemas
+/**
+ * @brief Tokens for lexemas
+ */
 enum Lex : unsigned int
 {
     OpenBr,  // open bracket received
@@ -33,39 +39,57 @@ enum Lex : unsigned int
     Cmd      // command
 };
 
-/// A type for lexemas
+/**
+ * @brief Lexema type
+ */
 using lexema_t = std::pair<enum Lex, std::string>;
 
-// Cmds input buffer type (commands are strings)
+/**
+ * @brief Cmds input buffer type (commands are strings)
+ */
 using cmds_t = std::vector<std::string>;
 
-// An input context, providing input block size and input queue
+/**
+ * @brief An input context; provide input block size and realize input queue
+ */
 struct input_context_t
 {
-    size_t block_size;        // command block size
-    cmds_t local_cmd_input_q; // commands temporary buffer in which block cmds are being accumulated
-    explicit input_context_t(size_t block_size) : block_size(block_size) {}
+    size_t block_size; // command block size
+    cmds_t cmds;       // commands temporary buffer in which block cmds are being accumulated
+    int dynamic_depth; // needed to follow using of brackets
+    explicit input_context_t(size_t block_size) : block_size(block_size), dynamic_depth{0} {}
 };
-// A type for input context handle
-using input_blk_handle_t = input_context_t *;
 
-// A pool of input contexts
-struct input_ctx_collection_t
+/**
+ * @brief A ptr to input context
+ */
+using sp_input_context_t = std::shared_ptr<input_context_t>;
+
+/**
+ * @brief A type for pool of input connections
+ */
+struct input_connections_t
 {
     std::mutex mtx; // A mutex for calling input interface methods from multiple threads
-    std::unordered_set<input_blk_handle_t> ctxs;
+    std::unordered_map<connection_handle_t, sp_input_context_t> ctxs;
+    bool delete_connection(connection_handle_t ch);
+    bool empty();
 };
 
-inline input_ctx_collection_t input_connections;
-
-/// @brief Takes one command from buf;
-///  accumulate commands in temporary ctx->cmds_buf
-///  when meet a condition - forms a block of commands and put it into ctx->cmd_blocks_q
-/// @param ctx
-/// @param buf
-void queue_a_command(input_blk_handle_t ctx, const std::string buf);
-
-// Output interface declaration
-void push_block_to_out_queue(void *_input_ctx);
+/**
+ * @brief An pool of input connections
+ */
+inline input_connections_t input_connections;
 
 lexema_t make_lexema(const std::string buf);
+
+///  Auxillaries  //////////
+inline std::string pid_to_string(std::thread *p)
+{
+    return std::to_string(std::hash<std::thread::id>{}(p->get_id()));
+}
+
+inline std::string this_pid_to_string()
+{
+    return std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+}

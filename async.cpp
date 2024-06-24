@@ -1,8 +1,8 @@
-/// @brief async.cpp
-///        Contains library interface implementation,
-///        specifically: the 'input' part of commands processor,
-///        which serve to groups commands from multiple connections into blocks
-///        and put them into a single output queue -block-by-block
+/**
+ * @brief async.cpp - contains the input part of commands processing
+ *                    which serve to group commands from multiple connections into blocks
+ *                    and put them into a single output queue -block-by-block
+ */
 
 #include "async_internal.h"
 #include "cmd_output.h"
@@ -16,111 +16,129 @@
 #include <vector>
 #include <iostream>
 #include <cstdlib>
+#include <utility>
 
-// Just a shortcut for a long type
-using inp_ctxs_iterator_t = decltype(input_connections.ctxs.emplace(input_context_t(size_t())));
-
-/// @brief Create a new connection to commands processor
-///        include a new local commands queue
-/// @param block_size - size of commands block for this connection
-/// @return 'depersonalized' (for incapsulation sake) pointer to new context
-void *connect(std::size_t block_size)
+/**
+ * @brief Creates new connection to input commands queue
+ * @param block_size - nof cmds in command block
+ * @return a handle to the created connection
+ */
+connection_handle_t connect(std::size_t block_size, const char *log_dir = log_directory)
 {
-    _DF;
-    inp_ctxs_iterator_t elem;
+    // _DF;
+
+    connection_handle_t handle;
     {
-        std::lock_guard<std::mutex> lock(input_connections.mtx);
-        if (output_context.finishing.load())
-            // Can't connect anymore
-            return nullptr;
+        std::lock_guard lock(input_connections.mtx);
 
         // Add new connection handle to the set of connections
-        elem = input_connections.ctxs.emplace(new input_context_t(block_size));
+        handle = input_connections.ctxs.emplace(std::make_pair(input_connections.ctxs.size(), new input_context_t(block_size))).first->first;
     }
 
-    // Launches output threads if they haven't been launched yet
-    // If  a block is pushed to out queue - OK it will remain there until
-    // at least one output thread is launcded
-    try_to_launch_output_threads();
+    // Launch output threads if they are not launched yet
+    output_context.th_pool.try_to_launch(log_dir);
 
-    return *(elem.first);
+    return handle;
 }
 
-/// @brief Receive and parse a command to store in local commands queue
-/// @param _ctx -connection handle
-/// @param buf  - contains one command ctring or one bracket
-void receive(void *_ctx, const std::string buf)
+/**
+ * @brief Receives exactly one command and put it into cmd input queue
+ * @param ch Handle for connection, created by connect
+ * @param buf Buffer containing the command
+ */
+void receive(connection_handle_t ch, const std::string buf)
 {
+
+    // _DF;
 
     if (!buf.size())
         return;
-    input_blk_handle_t inp_ctx = static_cast<input_blk_handle_t>(_ctx);
+    auto inp_ctx = input_connections.ctxs[ch];
 
-    static int dynamic_depth{0};
-    // _DF;
     auto lexema = make_lexema(buf);
     int lex_id = lexema.first; // lexema.first: Lex enum,
                                // lexema.second: command string, if any, or ""
     switch (lex_id)
     {
-    case Cmd:                                                   // command received
-        inp_ctx->local_cmd_input_q.emplace_back(lexema.second); // put it into local inp_ctx's queue
-        if (dynamic_depth == 0)
-            if (inp_ctx->local_cmd_input_q.size() == inp_ctx->block_size)
-                push_block_to_out_queue(inp_ctx); // Put into output q and clear it
+    case Cmd:                                      // command received
+        inp_ctx->cmds.emplace_back(lexema.second); // put it into local inp_ctx's queue
+        if (inp_ctx->dynamic_depth == 0)
+            if (inp_ctx->cmds.size() == inp_ctx->block_size)
+                output_context.blocks_q.erase_push(inp_ctx->cmds); // Put into output q and clear it
         break;
-    case OpenBr:         // '{'
-        dynamic_depth++; // nested '{' are accounted to errorlessly accept nested '}'
+    case OpenBr:                    // '{'
+        (inp_ctx->dynamic_depth)++; // nested '{' are accounted to errorlessly accept nested '}'
         break;
     case CloseBr: // '}'
-        if (--dynamic_depth < 0)
+        if ((--(inp_ctx->dynamic_depth)) < 0)
         { // unpair close bracket!
             std::cerr << "Unpair close bracket" << std::endl;
             std::quick_exit(2);
         }
-        if (dynamic_depth == 0)               // dynamic block is finishing
-            push_block_to_out_queue(inp_ctx); // Put into output q and clear it
+        if ((inp_ctx->dynamic_depth) == 0)                     // dynamic block is finishing
+            output_context.blocks_q.erase_push(inp_ctx->cmds); // Put into output q and clear it
         break;
     default:
-        _DS("Unknown cmd");
         std::cerr << "Unknown command" << std::endl;
         std::quick_exit(2);
         break;
     };
 }
 
-void disconnect(void *_ctx)
+/**
+ * @brief Thread-safe delete of connection
+ * @param ch connection handle
+ * @return true if the connection was in pool and was deleted
+ */
+bool input_connections_t::delete_connection(connection_handle_t ch)
 {
-
-    input_blk_handle_t inp_ctx = static_cast<input_blk_handle_t>(_ctx);
-
-    // Push the last block to output queue
-    push_block_to_out_queue(inp_ctx);
-
-    // Delete connection
-    std::unique_lock<std::mutex> inp_lock(input_connections.mtx);
-    input_connections.ctxs.erase(inp_ctx);
-    delete inp_ctx;
-    _DF;
-
-    // If it was the last connection
-    if (input_connections.ctxs.empty())
+    std::lock_guard(input_connections.mtx);
+    if (input_connections.ctxs.contains(ch))
     {
-        output_context.finishing.store(true);
-        // std::lock_guard<std::mutex> lock(output_context.front_mtx);
-        // inp_lock.unlock();
+        input_connections.ctxs.erase(ch);
 
-        // for (auto pprc = output_context.out_threads.begin(); pprc != output_context.out_threads.end(); pprc++)
-        // {
-        //     if (pprc->joinable())
-        //     {
-        //         _DS(" joinable");
-        //         pprc->join();
-        //     }
-        // }
+        return true;
     }
+    return false;
 }
 
+/**
+ * @brief tread-safe empty() function for input connections pool
+ * @return
+ */
+bool input_connections_t::empty()
+{
+    std::lock_guard(input_connections.mtx);
+    return input_connections.ctxs.empty();
+}
+
+/**
+ * @brief Delete connection corresponding to the given handle,
+ *        form a block from the rest of input cmd queue
+ *        and pushes it into output blocks queue
+ *        If that was the last connection, then
+ *        - initiate termination of output threads
+ * @param ch Handle for connection, created by connect
+ */
+void disconnect(connection_handle_t ch)
+{
+    // _DF
+
+    auto inp_ctx = input_connections.ctxs[ch];
+
+    // Push the last block to output queue
+    output_context.blocks_q.erase_push(inp_ctx->cmds);
+
+    // Delete connection
+    auto res = input_connections.delete_connection(ch);
+    (void)res;
+}
+
+/**
+ * @brief Process input command to create lexema (token + command)
+ * @param buf The buffer, which command comes from
+ * @return Created lexema
+ */
 lexema_t make_lexema(const std::string buf)
 {
     if (buf.find(open_br_sym) != buf.npos)
