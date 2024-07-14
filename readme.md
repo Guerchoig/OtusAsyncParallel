@@ -21,5 +21,4 @@ when a new block is pushed into queue.
 
 ## Stopping operation
 When a connection call 'disconnect()', it drops the rest of commands into output blocks queue and disconnect from connections pool.
-If that was the last connection it also send a 'stop' signal to output threads. When receiving it output thread output the rested blocks and terminate
 

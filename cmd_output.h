@@ -104,8 +104,7 @@ public:
     template <typename T>
     bool fetch_blocks(std::vector<cmd_block_t> &blocks); // copy ready-to-be-written blocks for output them and establishes
                                                          // their output state in queue
-    void stop();                                         // establish 'finishing' state
-    bool empty() { return lst.empty(); }                 // Incapsulation-only queue's emty func
+    bool empty() { return lst.empty(); }                 // Just for incapsulation a queue's emty func
 };
 
 /**

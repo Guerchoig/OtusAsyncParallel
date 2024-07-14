@@ -191,13 +191,3 @@ bool cmd_blocks_q_t::fetch_blocks(std::vector<cmd_block_t> &blocks)
     cv.notify_all();
     return !(lst.empty() && output_context.finishing.load());
 }
-
-/**
- * @brief Send a signal to stop processing commands
- */
-void cmd_blocks_q_t::stop()
-{
-    // _DF;
-    output_context.finishing.store(true);
-    cv.notify_all();
-}
