@@ -8,6 +8,10 @@
 #include <condition_variable>
 
 using connection_handle_t = size_t;
+/**
+ * @brief A default value for output directory
+ */
+constexpr auto log_directory = "./log";
 
 /**
  * @brief Creates new connection to input commands queue

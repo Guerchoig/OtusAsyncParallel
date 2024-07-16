@@ -36,10 +36,6 @@ struct TO_CONS
  */
 constexpr unsigned int EMPTY_TIME = 0;
 
-/**
- * @brief A default value for output directory
- */
-constexpr auto log_directory = "../log";
 
 /**
  * @brief A block of commands is a collection of commands + some state info
